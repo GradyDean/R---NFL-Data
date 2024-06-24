@@ -1,0 +1,209 @@
+---
+title: "NFL Data"
+author: "Grady Blair"
+date: "2023-11-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning=FALSE,message=FALSE)
+library(tidyverse)
+library(nflverse)
+library(ggplot2)
+data <-load_pbp(2023)
+#view(data)
+```
+Using the nflverse library I was able to use the nflfastR package which contains play by play data in the NFL from 1999 to the current season. The data set contains 372 different variables. They ranged from things such as team name, player name, yardages, turnovers, quarter,and score. I decided to focus on relevant data so all my variables are from the current 2023 season. 
+```{r wins}
+#Calculate Overall Record for each team this season
+wins <- data %>% mutate(game_date=as.Date(game_date,format="%Y-%m-%d")) %>% select(game_id,home_team,away_team,season_type, week, season, total_home_score, total_away_score, score_differential_post, game_seconds_remaining,result) %>% filter(season_type=="REG", game_seconds_remaining=="0") %>% mutate(win_result = case_when(result>0 ~ "home_win", result<0 ~ "home_loss", result==0 ~ "tie")) 
+
+
+#wins
+HomeW <- wins %>% group_by(home_team) %>% rename(team=home_team) %>% summarise(wins=sum(win_result=="home_win"))
+AwayW <- wins %>% group_by(away_team) %>% rename(team=away_team) %>% summarise(wins=sum(win_result=="home_loss"))
+WINS <- left_join(HomeW,AwayW, join_by(wins))
+
+
+wins0 <- HomeW %>%
+  left_join(AwayW, by = "team", suffix = c("_HomeW", "_AwayW")) %>%
+  mutate(total_wins = wins_HomeW + wins_AwayW) %>%
+  select(team, total_wins)
+
+HomeL <- wins %>% group_by(home_team) %>% rename(team=home_team) %>% summarise(losses=sum(win_result=="home_loss"))
+AwayL <- wins %>% group_by(away_team) %>% rename(team=away_team) %>% summarise(losses=sum(win_result=="home_win"))
+
+losses0 <- HomeL %>%
+  left_join(AwayL, by = "team", suffix = c("_HomeL", "_AwayL")) %>%
+  mutate(total_losses = losses_HomeL + losses_AwayL) %>%
+  select(team, total_losses)
+
+record <- wins0 %>% left_join(losses0, by="team")
+```
+Question 1: Considering situational scoring, which teams demonstrated the highest efficiency in red zone conversions(inside the opposing 20 yard line), and how does this correlate with their record?
+
+```{r q1}
+redzone <- data %>% filter(season_type=="REG", drive_inside20==1) %>% select(td_team)
+rztotal <- table(redzone$td_team)
+rzwins <- as.data.frame(rztotal) %>% rename(team=Var1) %>% rename(rz_scores=Freq) %>% left_join(record, by="team")
+head(rzwins)
+ggplot(rzwins,aes(x=total_wins,y=rz_scores))+geom_smooth(aes(x=total_wins, y=rz_scores),method = "lm", se = FALSE, color = "blue")+nflplotR::geom_nfl_logos(aes(team_abbr = team, group=team), width = 0.065, alpha = 0.7)+labs(x="Total Wins",y="Red Zone Scores", title="Impact of Red Zone Efficiency on NFL Team Performance", subtitle = "2023 Season")
+```
+
+
+There is a positive trend between total wins and red zone efficiency. Teams with more red zone scores often have more wins. The largest outlier in this data is the Steelers who have more wins than many team, but less red zone scores. This could mean their defense is really good or that they score more from beyond the red zone. If look at this again, I would narrow the impact red zone scoring has on a team to just their offense how much scoring they actually do, instead of looking at wins. 
+
+Question 2: In high-pressure situations during the fourth quarter, how do teams turnover rates change compared to other quarters?
+
+```{r q2}
+interceptions <- data %>% filter(interception==1) %>% select(posteam,interception) %>% group_by(posteam) %>% summarise(totali=sum(interception))
+fumbles <- data %>% filter(fumble_lost==1) %>% select(posteam,fumble_lost) %>% group_by(posteam) %>% summarise(totalf=sum(fumble_lost))
+total_to <- full_join(fumbles,interceptions) %>% mutate(total=totalf+totali) %>% arrange(desc(total))
+head(total_to, 32)
+
+interceptions1 <- data %>% filter(qtr==1,interception==1) %>% select(posteam,interception,qtr) %>% group_by(posteam) %>% summarise(totali=sum(interception))
+fumbles1 <- data %>% filter(qtr==1,fumble_lost==1) %>% select(posteam,fumble_lost,qtr) %>% group_by(posteam) %>% summarise(totalf=sum(fumble_lost))
+total_to1 <- full_join(fumbles1,interceptions1) %>% mutate(total=totalf+totali) %>% arrange(desc(total))
+#head(total_to1, 32)
+qtr1 <- sum(total_to1$total,na.rm = TRUE)
+
+interceptions2 <- data %>% filter(qtr==2,interception==1) %>% select(posteam,interception,qtr) %>% group_by(posteam) %>% summarise(totali=sum(interception))
+fumbles2 <- data %>% filter(qtr==2,fumble_lost==1) %>% select(posteam,fumble_lost,qtr) %>% group_by(posteam) %>% summarise(totalf=sum(fumble_lost))
+total_to2 <- full_join(fumbles2,interceptions2) %>% mutate(total=totalf+totali) %>% arrange(desc(total))
+#head(total_to2, 32)
+qtr2 <- sum(total_to2$total,na.rm = TRUE)
+
+interceptions3 <- data %>% filter(qtr==3,interception==1) %>% select(posteam,interception,qtr) %>% group_by(posteam) %>% summarise(totali=sum(interception))
+fumbles3 <- data %>% filter(qtr==3,fumble_lost==1) %>% select(posteam,fumble_lost,qtr) %>% group_by(posteam) %>% summarise(totalf=sum(fumble_lost))
+total_to3 <- full_join(fumbles3,interceptions3) %>% mutate(total=totalf+totali) %>% arrange(desc(total))
+#head(total_to3, 32)
+qtr3 <- sum(total_to3$total,na.rm = TRUE)
+
+interceptions4 <- data %>% filter(qtr==4,interception==1) %>% select(posteam,interception,qtr) %>% group_by(posteam) %>% summarise(totali=sum(interception))
+fumbles4 <- data %>% filter(qtr==4,fumble_lost==1) %>% select(posteam,fumble_lost,qtr) %>% group_by(posteam) %>% summarise(totalf=sum(fumble_lost))
+total_to4 <- full_join(fumbles4,interceptions4) %>% mutate(total=totalf+totali) %>% arrange(desc(total))
+#head(total_to4, 32)
+qtr4 <- sum(total_to4$total,na.rm = TRUE)
+
+
+quarters_to <- tibble(
+  Quarter = factor(c("first", "second", "third", "fourth"), levels = c("first", "second", "third", "fourth")),
+  Turnovers = c(qtr1, qtr2, qtr3, qtr4)
+)
+
+ggplot(quarters_to, aes(x = Quarter, y = Turnovers, fill = Quarter)) +
+  geom_bar(stat = "identity") +
+  labs(
+    x = "Quarter",
+    y = "Turnovers",
+    title = "Turnovers by Quarter",
+    subtitle = "All teams 2023 Season"
+  )
+```
+
+Conclusion: Teams turn the ball over the most in the fourth quarter. I believe this means that in high pressure situations at the end of the game, the losing team is often taking more risks on offense and defense, which creates more turnovers. This can also be seen at right before half time as the possession will change the following quarter. There could also be such an increase in turnovers for these two quarters due to junk plays as the clock expires, such as hailmarys. 
+
+Question 3: Identifying explosive plays, who are the top two players in terms of total yards gained in plays of 20 yards or more, and how does this impact their team's ability to win games?
+
+```{r q3}
+players <- data %>% filter(yards_gained>=20) %>% select(yards_gained,posteam, passer_player_name,passing_yards,rusher_player_name,rushing_yards,receiver_player_name,receiving_yards) %>% group_by(posteam)
+
+rushing <- select(players, posteam, yards_gained,rusher_player_name,rushing_yards)
+clean_rush <- na.omit(rushing) %>% arrange(posteam) %>% filter(posteam=="KC"|posteam=="LV"|posteam=="DEN"|posteam=="LAC")
+#view(clean_rush)
+Rchiefs<- rushing %>% filter(posteam=="KC")
+Rchiefs <- na.omit(Rchiefs) %>% arrange(rusher_player_name) %>% group_by(rusher_player_name,posteam) %>% rename(player=rusher_player_name) %>% summarise(totalR=sum(rushing_yards))
+Rchiefs <- Rchiefs %>% arrange(desc(totalR)) %>% distinct(player, .keep_all = TRUE) 
+Rchiefs <-head(Rchiefs,1)
+#head(Rchiefs)
+
+Rraiders <- rushing %>% filter(posteam=="LV")
+Rraiders <- na.omit(Rraiders)%>% arrange(rusher_player_name)%>% group_by(rusher_player_name,posteam) %>% rename(player=rusher_player_name) %>% summarise(totalR=sum(rushing_yards))
+Rraiders <- Rraiders %>% arrange(desc(totalR)) %>% distinct(player, .keep_all = TRUE) 
+Rraiders <-head(Rraiders,1)
+#head(Rraiders)
+
+Rbroncos <- rushing %>% filter(posteam=="DEN")
+Rbroncos <- na.omit(Rbroncos)%>% arrange(rusher_player_name)%>% group_by(rusher_player_name,posteam) %>% rename(player=rusher_player_name) %>% summarise(totalR=sum(rushing_yards))
+Rbroncos <- Rbroncos %>% arrange(desc(totalR)) %>% distinct(player, .keep_all = TRUE) 
+Rbroncos <-head(Rbroncos,1)
+#head(Rbroncos)
+
+Rchargers <- rushing %>% filter(posteam=="LAC")
+Rchargers <- na.omit(Rchargers)%>% arrange(rusher_player_name)%>% group_by(rusher_player_name,posteam) %>% rename(player=rusher_player_name) %>% summarise(totalR=sum(rushing_yards))
+Rchargers <- Rchargers %>% arrange(desc(totalR)) %>% distinct(player, .keep_all = TRUE) 
+Rchargers <-head(Rchargers,1)
+#head(Rchargers)
+
+receiving <- select(players, posteam, yards_gained,receiver_player_name,receiving_yards)
+clean_receiving <- na.omit(receiving) %>% arrange(posteam) %>% filter(posteam=="KC"|posteam=="LV"|posteam=="DEN"|posteam=="LAC")
+#view(clean_receiving)
+RCchiefs<- receiving %>% filter(posteam=="KC")
+RCchiefs <- na.omit(RCchiefs) %>% arrange(receiver_player_name) %>% group_by(receiver_player_name,posteam) %>% rename(player=receiver_player_name) %>% summarise(totalR=sum(receiving_yards))
+RCchiefs <- RCchiefs %>% arrange(desc(totalR)) %>% distinct(player, .keep_all = TRUE)
+RCchiefs <- head(RCchiefs,1)
+#head(RCchiefs)
+
+RCraiders <- receiving %>% filter(posteam=="LV")
+RCraiders <- na.omit(RCraiders) %>% arrange(receiver_player_name) %>% group_by(receiver_player_name,posteam) %>% rename(player=receiver_player_name) %>% summarise(totalR=sum(receiving_yards))
+RCraiders <- RCraiders %>% arrange(desc(totalR)) %>% distinct(player, .keep_all = TRUE)
+RCraiders <- head(RCraiders,1)
+#head(RCraiders)
+
+RCbroncos <- receiving %>% filter(posteam=="DEN")
+RCbroncos <- na.omit(RCbroncos) %>% arrange(receiver_player_name) %>% group_by(receiver_player_name,posteam) %>% rename(player=receiver_player_name) %>% summarise(totalR=sum(receiving_yards))
+RCbroncos <- RCbroncos %>% arrange(desc(totalR)) %>% distinct(player, .keep_all = TRUE)
+RCbroncos <- head(RCbroncos,1)
+#head(RCbroncos)
+
+RCchargers <- receiving %>% filter(posteam=="LAC")
+RCchargers <- na.omit(RCchargers) %>% arrange(receiver_player_name) %>% group_by(receiver_player_name,posteam) %>% rename(player=receiver_player_name) %>% summarise(totalR=sum(receiving_yards))
+RCchargers <- RCchargers %>% arrange(desc(totalR)) %>% distinct(player, .keep_all = TRUE) 
+RCchargers <-head(RCchargers,1)
+#head(RCchargers)
+
+players_total1 <- merge(Rchiefs,RCchiefs,all=TRUE)
+players_total2 <- merge(RCbroncos,Rbroncos, all=TRUE)
+players_total3 <- merge(RCraiders,Rraiders, all=TRUE)
+players_total4 <- merge(RCchargers,Rchargers, all=TRUE)
+#head(players_total1)
+
+players_total <-merge(players_total1,players_total2,all=TRUE)
+players_total <- merge(players_total,players_total3,all=TRUE)
+players_total <- merge(players_total,players_total4,all=TRUE)
+players_total <- players_total %>% group_by(posteam)
+head(players_total,32)
+
+p <- ggplot(players_total, aes(fill = player, y = posteam, x = totalR)) +
+  scale_fill_manual(values = c(
+    "T.Kelce" = "red",
+    "I.Pacheco" = "red",
+    "A.Ekeler" = "blue",
+    "K.Allen" = "blue",
+    "J.Jacobs" = "black",
+    "D.Adams" = "black",
+    "J.McLaughlin" = "orange",
+    "C.Sutton" = "orange"
+  )) +
+  geom_bar(position = "dodge", stat = "identity", color = "white") +  
+  geom_text(aes(label = player), position = position_dodge(width = 0.9), vjust = 1.0, hjust = 1.5, color = "white") +
+  theme_minimal() +
+  theme(panel.background = element_rect(fill = "grey")) +
+  guides(fill = FALSE) +labs(x="Yards",y="Team", title="Overall Yards gained from big plays",subtitle = "Yardage from plays where 20+ yards were gained")
+
+print(p)
+team_totals <- players_total %>% group_by(posteam) %>% summarise(yards=sum(totalR)) 
+record2 <- record %>% rename(posteam=team) %>% filter(posteam=="KC"|posteam=="DEN"|posteam=="LAC"|posteam=="LV")
+
+
+team_totals <- team_totals %>% left_join(record2,by="posteam")
+team_totals
+ggplot(team_totals,aes(x=total_wins,y=yards,group=posteam))+nflplotR::geom_nfl_logos(aes(team_abbr = posteam), width = 0.065, alpha = 1.0)+labs(x="Total Wins",y="Red Zone Scores", title="Impact of large plays on team performace", subtitle = "AFC West 2023")
+
+```
+
+Conclusion: After limiting the data to just the AFC West. I would say there is no real trend between having more large plays/players who create them and winning games. This could be due to the fact that time of possession is a large part of winning games along with playing defense. You would think the Chargers who have the most yards from explosive plays would have more wins than the team with the least amount, but they do not.It is hard to see a trend with only four variables on the final graph. I would be interested to see how this looks across the entire AFC and NFC, but I still believe there would be little correlation as having better breakout players can lead to poor chemistry offensively. 
+```{r}
+```
+
